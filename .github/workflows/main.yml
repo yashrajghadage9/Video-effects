@@ -1,0 +1,82 @@
+name: Video Sketch Effect Workflow
+
+on:
+  push:
+    paths:
+      - 'inputs/**'
+
+permissions:
+  contents: write
+
+jobs:
+  process-video:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+        shell: bash
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          else
+            echo "requirements.txt not found — continuing without pip installs"
+          fi
+        shell: bash
+
+      - name: Debug inputs
+        run: |
+          echo "Listing inputs directory:"
+          ls -la inputs/ || echo "Inputs folder missing or empty"
+        shell: bash
+
+      - name: Process all video files (mp4/mkv/avi/mov)
+        run: |
+          set -euo pipefail
+          mkdir -p outputs
+          shopt -s nullglob
+          files=(inputs/*.{mp4,mkv,avi,mov})
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No video files found in inputs/ — nothing to do"
+            exit 0
+          fi
+          for f in "${files[@]}"; do
+            filename=$(basename "$f")
+            base="${filename%.*}"
+            output="outputs/sketched_${base}.mp4"
+            echo "Processing: $filename -> $output"
+            python sketch_video.py --input "$f" --output "$output"
+          done
+        shell: bash
+
+      - name: Debug outputs
+        run: |
+          echo "Listing outputs directory:"
+          ls -la outputs/ || echo "Outputs folder missing or empty"
+        shell: bash
+
+      - name: Commit and push outputs
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git add outputs/ || true
+          git commit -m "Add processed sketch video outputs" || echo "No changes to commit"
+          git push
+        shell: bash
