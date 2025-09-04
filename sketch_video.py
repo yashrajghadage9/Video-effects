@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 import argparse
+import os  # Added for directory creation
 
 def apply_sketch_effect(frame):
     # Convert to grayscale
@@ -14,6 +15,11 @@ def apply_sketch_effect(frame):
     return cv2.cvtColor(sketch, cv2.COLOR_GRAY2BGR)
 
 def process_video(input_path, output_path):
+    # Create output directory if it doesn't exist
+    output_dir = os.path.dirname(output_path)
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    
     cap = cv2.VideoCapture(input_path)
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     out = cv2.VideoWriter(output_path, fourcc, 20.0, (int(cap.get(3)), int(cap.get(4))))
