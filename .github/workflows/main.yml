@@ -28,12 +28,15 @@ jobs:
           # Assuming input is in inputs/ and output goes to outputs/
           python sketch_video.py --input inputs/example_video.mp4 --output outputs/sketched_video.mp4
 
+      - name: Debug output files
+        run: ls -la outputs/ || echo "Outputs folder is empty"
+
       - name: Commit and push output
         run: |
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
-          git add outputs/
+          git add outputs/ || true  # Ignore if no files to add
           git commit -m "Add processed sketch video output" || echo "No changes to commit"
-          git push
+          git push || echo "Push failed - check logs"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # This allows pushing back to the repo
