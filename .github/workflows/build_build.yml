@@ -34,11 +34,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libopencv-dev ffmpeg pkg-config
 
+      - name: Copy CMake file
+        run: |
+          cp CMakeLists_build.txt CMakeLists.txt
+
       - name: Build application
         run: |
           mkdir build_build
           cd build_build
-          cmake .. -f ../CMakeLists_build.txt -DCMAKE_BUILD_TYPE=Release
+          cmake .. -DCMAKE_BUILD_TYPE=Release
           make -j$(nproc)
 
       - name: Test build
@@ -75,5 +79,4 @@ jobs:
           git add outputs_build/
           git commit -m "Add processed sketch videos from build [$(date)]" || exit 0
           git push
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
