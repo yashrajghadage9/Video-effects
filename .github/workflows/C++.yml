@@ -1,0 +1,146 @@
+name: Ultra-Optimized C++ Video Sketch Effect
+
+on:
+  push:
+    paths:
+      - 'inputs/**'
+
+permissions:
+  contents: write
+
+jobs:
+  process-video:
+    runs-on: ubuntu-latest-8-cores  # Maximum performance runner
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      CC: gcc-12
+      CXX: g++-12
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - name: Setup ultra-fast C++ environment
+        uses: aminya/setup-cpp@v1
+        with:
+          compiler: gcc-12
+          cmake: true
+          ninja: true
+
+      - name: Cache all dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            /usr/local
+            ~/.cache
+            ./build/_deps
+          key: ${{ runner.os }}-ultra-optimized-${{ hashFiles('CMakeLists.txt') }}
+
+      - name: Install optimized dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libopencv-dev \
+            libopencv-contrib-dev \
+            libtbb-dev \
+            ffmpeg \
+            pkg-config \
+            libomp-dev \
+            intel-mkl-full
+          # Install CUDA toolkit for GPU acceleration
+          wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.0-1_all.deb
+          sudo dpkg -i cuda-keyring_1.0-1_all.deb
+          sudo apt-get update
+          sudo apt-get install -y cuda-toolkit-12-2 || echo "CUDA install failed, continuing with CPU"
+        shell: bash
+
+      - name: Build with maximum optimizations
+        run: |
+          mkdir -p build
+          cd build
+          cmake .. \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_FLAGS="-O3 -march=native -mtune=native -mavx2 -mfma" \
+            -DWITH_TBB=ON \
+            -DWITH_OPENMP=ON \
+            -GNinja
+          ninja -j$(nproc)
+        shell: bash
+
+      - name: List inputs and system info
+        run: |
+          echo "=== System Information ==="
+          lscpu | grep -E "(Model name|CPU\(s\)|Thread|Core)"
+          free -h
+          echo "=== GPU Information ==="
+          nvidia-smi || echo "No NVIDIA GPU detected"
+          echo "=== Input Files ==="
+          ls -la inputs/ || true
+        shell: bash
+
+      - name: Ultra-fast video processing
+        run: |
+          set -euo pipefail
+          mkdir -p outputs
+          shopt -s nullglob
+          
+          files=(inputs/*)
+          video_files=()
+          for f in "${files[@]}"; do
+            case "${f,,}" in
+              *.mp4|*.mkv|*.avi|*.mov) video_files+=("$f") ;;
+            esac
+          done
+          
+          if [ ${#video_files[@]} -eq 0 ]; then
+            echo "No video files found"
+            exit 0
+          fi
+          
+          # Process each video with maximum performance
+          for f in "${video_files[@]}"; do
+            filename=$(basename "$f")
+            base="${filename%.*}"
+            output="outputs/sketched_${base}.mp4"
+            
+            echo "Processing: $filename -> $output"
+            echo "Using $(nproc) CPU threads"
+            
+            # Try GPU first, fallback to CPU
+            ./build/sketch_video "$f" "$output" $(nproc) true || \
+            ./build/sketch_video "$f" "$output" $(nproc) false
+          done
+        shell: bash
+
+      - name: Performance analysis
+        run: |
+          echo "=== Processing Results ==="
+          ls -lh outputs/ || true
+          
+          # Calculate performance metrics
+          for f in outputs/*.mp4; do
+            if [ -f "$f" ]; then
+              echo "Output: $(basename "$f")"
+              ffprobe -v quiet -show_format -show_streams "$f" | grep -E "(duration|bit_rate|width|height)"
+            fi
+          done
+        shell: bash
+
+      - name: Upload ultra-fast results
+        uses: actions/upload-artifact@v4
+        with:
+          name: ultra-optimized-outputs-${{ github.run_number }}-${{ github.run_attempt }}
+          path: outputs/
+          if-no-files-found: warn
+
+      - name: Commit optimized outputs
+        run: |
+          git config --global user.name "Ultra-Fast GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git add outputs/ || true
+          git commit -m "Add ultra-optimized C++ sketch video outputs [$(date)]" || echo "No changes to commit"
+          git push || echo "Push failed - check logs"
+        shell: bash
+        
