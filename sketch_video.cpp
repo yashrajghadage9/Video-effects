@@ -1,29 +1,13 @@
 #include <opencv2/opencv.hpp>
-#include <opencv2/core/utils/parallel.hpp>
 #include <opencv2/imgproc.hpp>
 #include <thread>
 #include <vector>
-#include <queue>
-#include <mutex>
-#include <condition_variable>
-#include <atomic>
-#include <future>
-#include <immintrin.h>  // Intel SIMD intrinsics
 #include <iostream>
 #include <chrono>
-
-#ifdef HAVE_OPENCV_CUDAIMGPROC
-#include <opencv2/cudaimgproc.hpp>
-#include <opencv2/cudaarithm.hpp>
-#endif
+#include <future>
 
 class VideoProcessor {
 private:
-    std::queue<cv::Mat> frame_queue;
-    std::queue<cv::Mat> processed_queue;
-    std::mutex queue_mutex, processed_mutex;
-    std::condition_variable queue_cv, processed_cv;
-    std::atomic<bool> finished{false};
     int num_threads;
     bool use_gpu;
     
@@ -34,6 +18,136 @@ public:
         cv::setUseOptimized(true);
         cv::setNumThreads(0); // Use all available cores
         
+        std::cout << "Using CPU with " << num_threads << " threads" << std::endl;
+    }
+
+    // Optimized sketch effect
+    cv::Mat apply_sketch_effect(const cv::Mat& frame) {
+        cv::Mat gray, inverted, blurred, sketch;
+        
+        // Convert to grayscale
+        cv::cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
+        
+        // Invert and blur
+        cv::bitwise_not(gray, inverted);
+        cv::GaussianBlur(inverted, blurred, cv::Size(21, 21), 0);
+        
+        cv::bitwise_not(blurred, inverted);
+        
+        // Divide operation for sketch effect
+        cv::divide(gray, inverted, sketch, 256.0);
+        
+        cv::Mat result;
+        cv::cvtColor(sketch, result, cv::COLOR_GRAY2BGR);
+        return result;
+    }
+
+    // Multi-threaded batch processing
+    void process_video_batch(const std::string& input_path, const std::string& output_path) {
+        cv::VideoCapture cap(input_path);
+        if (!cap.isOpened()) {
+            throw std::runtime_error("Cannot open video: " + input_path);
+        }
+
+        int width = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_WIDTH));
+        int height = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_HEIGHT));
+        double fps = cap.get(cv::CAP_PROP_FPS);
+        int total_frames = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_COUNT));
+
+        cv::VideoWriter writer(output_path, cv::VideoWriter::fourcc('m','p','4','v'), 
+                              fps, cv::Size(width, height));
+        if (!writer.isOpened()) {
+            throw std::runtime_error("Cannot create output video: " + output_path);
+        }
+
+        std::cout << "Processing " << total_frames << " frames at " << fps << " FPS..." << std::endl;
+
+        // Process in batches for memory efficiency
+        const int batch_size = num_threads * 2;
+        std::vector<cv::Mat> frame_batch;
+        std::vector<std::future<cv::Mat>> futures;
+        
+        auto start_time = std::chrono::high_resolution_clock::now();
+        int processed_frames = 0;
+
+        while (true) {
+            // Read batch of frames
+            frame_batch.clear();
+            for (int i = 0; i < batch_size; i++) {
+                cv::Mat frame;
+                if (!cap.read(frame)) break;
+                frame_batch.push_back(frame);
+            }
+            
+            if (frame_batch.empty()) break;
+
+            // Process batch in parallel using std::async
+            futures.clear();
+            for (const auto& frame : frame_batch) {
+                futures.push_back(std::async(std::launch::async, 
+                    [this, frame]() { return apply_sketch_effect(frame); }));
+            }
+
+            // Collect results and write
+            for (auto& future : futures) {
+                cv::Mat result = future.get();
+                writer.write(result);
+                processed_frames++;
+            }
+
+            // Progress update
+            if (processed_frames % (batch_size * 5) == 0) {
+                auto current_time = std::chrono::high_resolution_clock::now();
+                auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(current_time - start_time).count();
+                double progress = static_cast<double>(processed_frames) / total_frames * 100.0;
+                double fps_current = (elapsed > 0) ? static_cast<double>(processed_frames) / elapsed : 0.0;
+                std::cout << "Progress: " << progress << "% (" << processed_frames 
+                         << "/" << total_frames << ") - " << fps_current << " FPS" << std::endl;
+            }
+        }
+
+        cap.release();
+        writer.release();
+
+        auto end_time = std::chrono::high_resolution_clock::now();
+        auto total_time = std::chrono::duration_cast<std::chrono::seconds>(end_time - start_time).count();
+        double avg_fps = (total_time > 0) ? static_cast<double>(processed_frames) / total_time : 0.0;
+        
+        std::cout << "Processing complete!" << std::endl;
+        std::cout << "Total frames: " << processed_frames << std::endl;
+        std::cout << "Total time: " << total_time << " seconds" << std::endl;
+        std::cout << "Average FPS: " << avg_fps << std::endl;
+    }
+};
+
+int main(int argc, char** argv) {
+    if (argc < 3) {
+        std::cerr << "Usage: " << argv[0] << " <input_video> <output_video> [threads] [use_gpu]" << std::endl;
+        return -1;
+    }
+
+    std::string input_path = argv[1];
+    std::string output_path = argv[2];
+    int threads = (argc > 3) ? std::atoi(argv[3]) : std::thread::hardware_concurrency();
+    bool use_gpu = false; // GPU disabled for standard OpenCV
+
+    try {
+        VideoProcessor processor(threads, use_gpu);
+        
+        std::cout << "Starting optimized video processing..." << std::endl;
+        std::cout << "Input: " << input_path << std::endl;
+        std::cout << "Output: " << output_path << std::endl;
+        std::cout << "Threads: " << threads << std::endl;
+
+        processor.process_video_batch(input_path, output_path);
+        
+    } catch (const std::exception& e) {
+        std::cerr << "Error: " << e.what() << std::endl;
+        return -1;
+    }
+
+    return 0;
+}
         // Check for CUDA support
         if (gpu && cv::cuda::getCudaEnabledDeviceCount() > 0) {
             std::cout << "Using GPU acceleration with " << cv::cuda::getCudaEnabledDeviceCount() << " devices" << std::endl;
