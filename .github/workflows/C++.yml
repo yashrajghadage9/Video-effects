@@ -30,10 +30,47 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libopencv-dev ffmpeg pkg-config
-        shell: bash
 
       - name: Build application
         run: |
+          mkdir -p build
+          cd build
+          cmake .. -DCMAKE_BUILD_TYPE=Release
+          make -j$(nproc)
+
+      - name: List inputs
+        run: ls -la inputs/ || echo "No inputs folder"
+
+      - name: Process videos
+        run: |
+          mkdir -p outputs
+          for f in inputs/*.mp4 inputs/*.mkv inputs/*.avi inputs/*.mov; do
+            if [ -f "$f" ]; then
+              filename=$(basename "$f")
+              base="${filename%.*}"
+              output="outputs/sketched_${base}.mp4"
+              echo "Processing: $filename"
+              ./build/sketch_video "$f" "$output" $(nproc) false
+            fi
+          done
+
+      - name: List outputs
+        run: ls -la outputs/ || echo "No outputs generated"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: processed-videos-${{ github.run_number }}
+          path: outputs/
+          if-no-files-found: warn
+
+      - name: Commit results
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git add outputs/ || true
+          git commit -m "Add processed videos" || echo "No changes"
+          git push || echo "Push failed"
           mkdir -p build
           cd build
           cmake .. -DCMAKE_BUILD_TYPE=Release
