@@ -27,11 +27,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libopencv-dev ffmpeg pkg-config
 
+      - name: Copy CMake file
+        run: |
+          cp CMakeLists_build.txt CMakeLists.txt
+
       - name: Build release version
         run: |
           mkdir build_build
           cd build_build
-          cmake .. -f ../CMakeLists_build.txt -DCMAKE_BUILD_TYPE=Release
+          cmake .. -DCMAKE_BUILD_TYPE=Release
           make -j$(nproc)
 
       - name: Create portable package
@@ -39,35 +43,20 @@ jobs:
           mkdir -p release-package-build
           cp build_build/sketch_video_build release-package-build/
           
-          # Create user guide
           cat > release-package-build/README_build.txt << 'EOF'
           Video Sketch Effect Build Application v1.0
           ==========================================
           
-          High-performance C++ build application that converts videos to sketch-style effects.
-          
-          USAGE:
-            ./sketch_video_build <input_video> <output_video> [threads]
+          USAGE: ./sketch_video_build <input_video> <output_video> [threads]
           
           EXAMPLES:
             ./sketch_video_build video.mp4 sketched_build_video.mp4
             ./sketch_video_build video.mp4 sketched_build_video.mp4 8
           
-          SUPPORTED FORMATS:
-            Input:  MP4, AVI, MOV, MKV
-            Output: MP4
-          
-          SYSTEM REQUIREMENTS:
+          REQUIREMENTS:
             - Ubuntu 20.04+ or similar Linux distribution
-            - OpenCV 4.x (install: sudo apt install libopencv-dev)
-            - FFmpeg (install: sudo apt install ffmpeg)
-          
-          PERFORMANCE:
-            - Multi-threaded processing (uses all CPU cores by default)
-            - Typical speed: 2-5x real-time on modern hardware
-            - Memory efficient: processes large videos without issues
-          
-          BUILD VERSION: Optimized with enhanced performance flags
+            - OpenCV 4.x (sudo apt install libopencv-dev)
+            - FFmpeg (sudo apt install ffmpeg)
           EOF
           
           chmod +x release-package-build/sketch_video_build
@@ -78,41 +67,19 @@ jobs:
         with:
           name: Video Sketch Effect Build ${{ github.ref_name }}
           body: |
-            ## Video Sketch Effect Build Release ${{ github.ref_name }}
+            ## Video Sketch Effect Build Release
             
-            Professional C++ build application for converting videos to artistic sketch effects.
+            High-performance C++ build application for video sketch effects.
             
-            ### 🚀 Build Features
-            - **Ultra-fast processing**: 10-20x faster than Python alternatives
-            - **Multi-threaded build**: Uses all CPU cores automatically
-            - **Multiple formats**: Supports MP4, AVI, MOV, MKV
-            - **High quality**: Advanced algorithms for smooth sketch effects
-            - **Memory efficient**: Handles large video files seamlessly
-            - **Build optimized**: Enhanced performance with specialized build flags
-            
-            ### 📦 Download Build Version
+            ### Download
             - **Linux (x64) Build**: `video-sketch-effect-build-linux.tar.gz`
             
-            ### 🛠 Quick Start Build
+            ### Usage
             ```
-            # Download and extract build version
             tar -xzf video-sketch-effect-build-linux.tar.gz
             cd release-package-build
-            
-            # Install dependencies (Ubuntu/Debian)
-            sudo apt install libopencv-dev ffmpeg
-            
-            # Process your video with build version
-            ./sketch_video_build input.mp4 sketched_build_output.mp4
+            ./sketch_video_build input.mp4 output.mp4
             ```
-            
-            ### ⚡ Build Performance
-            - Typical processing speed: 2-5x real-time
-            - Automatic multi-core utilization
-            - Optimized for modern CPUs with SIMD instructions
-            - Enhanced build configuration for maximum performance
           files: |
             video-sketch-effect-build-linux.tar.gz
-          draft: false
-          prerelease: false
-          
+            
