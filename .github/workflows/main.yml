@@ -78,98 +78,6 @@ jobs:
           ls -la outputs/ || true
         shell: bash
 
-      - name: Upload processed videos (artifact)
-        uses: actions/upload-artifact@v4
-        with:
-          name: processed-videos-${{ github.run_id }}
-          path: outputs/
-          if-no-files-found: error          if [ -f requirements.txt ]; then
-            pip install -r requirements.txt
-          else
-            echo "requirements.txt not found — continuing"
-          fi
-        shell: bash
-
-      - name: List inputs
-        run: |
-          echo "Listing inputs directory:"
-          ls -la inputs/ || true
-        shell: bash
-
-      - name: Process videos (mp4/mkv/avi/mov)
-        run: |
-          set -euo pipefail
-          mkdir -p outputs
-          shopt -s nullglob
-          files=(inputs/*)
-          video_files=()
-          for f in "${files[@]}"; do
-            case "${f,,}" in
-              *.mp4|*.mkv|*.avi|*.mov) video_files+=("$f") ;;
-            esac
-          done
-          if [ ${#video_files[@]} -eq 0 ]; then
-            echo "No supported video files found in inputs/ — nothing to do"
-            exit 0
-          fi
-          for f in "${video_files[@]}"; do
-            filename=$(basename "$f")
-            base="${filename%.*}"
-            output="outputs/sketched_${base}.mp4"
-            echo "Processing: $filename -> $output"
-            python sketch_video.py --input "$f" --output "$output"
-          done
-        shell: bash
-
-      - name: List outputs
-        run: |
-          echo "Listing outputs directory:"
-          ls -la outputs/ || true
-        shell: bash
-
-      - name: Upload processed videos (artifact)
-        uses: actions/upload-artifact@v4
-        with:
-          name: processed-videos-${{ github.run_id }}
-          path: outputs/
-          if-no-files-found: error          if [ -f requirements.txt ]; then
-            pip install -r requirements.txt
-          else
-            echo "requirements.txt not found — continuing without pip installs"
-          fi
-        shell: bash
-
-      - name: Debug inputs
-        run: |
-          echo "Listing inputs directory:"
-          ls -la inputs/ || echo "Inputs folder missing or empty"
-        shell: bash
-
-      - name: Process all video files (mp4/mkv/avi/mov)
-        run: |
-          set -euo pipefail
-          mkdir -p outputs
-          shopt -s nullglob
-          files=(inputs/*.{mp4,mkv,avi,mov})
-          if [ ${#files[@]} -eq 0 ]; then
-            echo "No video files found in inputs/ — nothing to do"
-            exit 0
-          fi
-          for f in "${files[@]}"; do
-            filename=$(basename "$f")
-            base="${filename%.*}"
-            output="outputs/sketched_${base}.mp4"
-            echo "Processing: $filename -> $output"
-            python sketch_video.py --input "$f" --output "$output"
-          done
-        shell: bash
-
-      - name: Debug outputs
-        run: |
-          echo "Listing outputs directory:"
-          ls -la outputs/ || echo "Outputs folder missing or empty"
-        shell: bash
-
       - name: Check for new outputs
         id: check_outputs
         run: |
@@ -198,3 +106,4 @@ jobs:
           git commit -m "Add processed sketch video outputs" || echo "No changes to commit"
           git push || echo "Push failed - check logs"
         shell: bash
+        
