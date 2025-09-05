@@ -11,16 +11,13 @@ permissions:
 jobs:
   process-video:
     runs-on: ubuntu-latest
-    env:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           persist-credentials: true
 
-      - name: Setup C++ environment
+      - name: Setup C++
         uses: aminya/setup-cpp@v1
         with:
           compiler: gcc
@@ -33,128 +30,33 @@ jobs:
 
       - name: Build application
         run: |
-          mkdir -p build
+          mkdir build
           cd build
           cmake .. -DCMAKE_BUILD_TYPE=Release
           make -j$(nproc)
 
-      - name: List inputs
-        run: ls -la inputs/ || echo "No inputs folder"
-
       - name: Process videos
         run: |
           mkdir -p outputs
-          for f in inputs/*.mp4 inputs/*.mkv inputs/*.avi inputs/*.mov; do
-            if [ -f "$f" ]; then
-              filename=$(basename "$f")
-              base="${filename%.*}"
-              output="outputs/sketched_${base}.mp4"
-              echo "Processing: $filename"
-              ./build/sketch_video "$f" "$output" $(nproc) false
-            fi
+          for f in inputs/*.{mp4,mkv,avi,mov}; do
+            [ -f "$f" ] || continue
+            base=$(basename "$f" | cut -d. -f1)
+            echo "Processing: $f"
+            ./build/sketch_video "$f" "outputs/sketched_$base.mp4" $(nproc) false
           done
 
-      - name: List outputs
-        run: ls -la outputs/ || echo "No outputs generated"
-
-      - name: Upload artifacts
+      - name: Upload results
         uses: actions/upload-artifact@v4
         with:
-          name: processed-videos-${{ github.run_number }}
+          name: videos-${{ github.run_number }}
           path: outputs/
-          if-no-files-found: warn
 
-      - name: Commit results
+      - name: Commit back
         run: |
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
-          git add outputs/ || true
-          git commit -m "Add processed videos" || echo "No changes"
-          git push || echo "Push failed"
-          mkdir -p build
-          cd build
-          cmake .. -DCMAKE_BUILD_TYPE=Release
-          make -j$(nproc)
-        shell: bash
-
-      - name: List inputs
-        run: ls -la inputs/ || echo "No inputs folder"
-        shell: bash
-
-      - name: Process videos
-        run: |
-          mkdir -p outputs
-          for f in inputs/*.mp4 inputs/*.mkv inputs/*.avi inputs/*.mov; do
-            if [ -f "$f" ]; then
-              filename=$(basename "$f")
-              base="${filename%.*}"
-              output="outputs/sketched_${base}.mp4"
-              echo "Processing: $filename"
-              ./build/sketch_video "$f" "$output" $(nproc) false
-            fi
-          done
-        shell: bash
-
-      - name: List outputs
-        run: ls -la outputs/ || echo "No outputs generated"
-        shell: bash
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: processed-videos-${{ github.run_number }}
-          path: outputs/
-          if-no-files-found: warn
-
-      - name: Commit results
-        run: |
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
-          git add outputs/ || true
-          git commit -m "Add processed videos" || echo "No changes"
-          git push || echo "Push failed"
-        shell: bash
-          mkdir -p build
-          cd build
-          cmake .. -DCMAKE_BUILD_TYPE=Release
-          make -j$(nproc)
-        shell: bash
-
-      - name: List inputs
-        run: ls -la inputs/ || echo "No inputs folder"
-        shell: bash
-
-      - name: Process videos
-        run: |
-          mkdir -p outputs
-          for f in inputs/*.mp4 inputs/*.mkv inputs/*.avi inputs/*.mov; do
-            if [ -f "$f" ]; then
-              filename=$(basename "$f")
-              base="${filename%.*}"
-              output="outputs/sketched_${base}.mp4"
-              echo "Processing: $filename"
-              ./build/sketch_video "$f" "$output" $(nproc) false
-            fi
-          done
-        shell: bash
-
-      - name: List outputs
-        run: ls -la outputs/ || echo "No outputs generated"
-        shell: bash
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: processed-videos-${{ github.run_number }}
-          path: outputs/
-          if-no-files-found: warn
-
-      - name: Commit results
-        run: |
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
-          git add outputs/ || true
-          git commit -m "Add processed videos" || echo "No changes"
-          git push || echo "Push failed"
-        shell: bash
-        
+          git config user.name "Actions"
+          git config user.email "actions@github.com"
+          git add outputs/
+          git commit -m "Add processed videos" || exit 0
+          git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
