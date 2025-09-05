@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   process-video:
-    runs-on: ubuntu-latest  # Standard 2-core runner - always available
+    runs-on: ubuntu-latest
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       CC: gcc-11
@@ -34,6 +34,117 @@ jobs:
         with:
           path: |
             /usr/local
+            ~/.cache
+            ./build/_deps
+          key: ${{ runner.os }}-optimized-${{ hashFiles('CMakeLists.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-optimized-
+
+      - name: Install optimized dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libopencv-dev \
+            libopencv-contrib-dev \
+            libtbb-dev \
+            ffmpeg \
+            pkg-config \
+            libomp-dev
+          echo "Dependencies installed successfully"
+        shell: bash
+
+      - name: Build with optimizations
+        run: |
+          mkdir -p build
+          cd build
+          cmake .. \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_FLAGS="-O3 -march=native -mtune=native -mavx2 -mfma -fopenmp" \
+            -DWITH_TBB=ON \
+            -DWITH_OPENMP=ON \
+            -GNinja
+          ninja -j$(nproc)
+          echo "Build completed successfully"
+        shell: bash
+
+      - name: System info and inputs
+        run: |
+          echo "=== System Information ==="
+          lscpu | grep -E "(Model name|CPU|Thread|Core)" || true
+          free -h
+          echo "=== Available CPU threads: $(nproc) ==="
+          echo "=== Input Files ==="
+          ls -la inputs/ || echo "No inputs folder found"
+        shell: bash
+
+      - name: Process videos with optimized C++
+        run: |
+          set -euo pipefail
+          mkdir -p outputs
+          shopt -s nullglob
+          
+          files=(inputs/*)
+          video_files=()
+          for f in "${files[@]}"; do
+            case "${f,,}" in
+              *.mp4|*.mkv|*.avi|*.mov) video_files+=("$f") ;;
+            esac
+          done
+          
+          if [ ${#video_files[@]} -eq 0 ]; then
+            echo "No supported video files found in inputs/"
+            exit 0
+          fi
+          
+          echo "Found ${#video_files[@]} video file(s) to process"
+          
+          for f in "${video_files[@]}"; do
+            filename=$(basename "$f")
+            base="${filename%.*}"
+            output="outputs/sketched_${base}.mp4"
+            
+            echo "Processing: $filename -> $output"
+            echo "Using $(nproc) CPU threads with optimizations"
+            
+            start_time=$(date +%s)
+            ./build/sketch_video "$f" "$output" $(nproc) false
+            end_time=$(date +%s)
+            duration=$((end_time - start_time))
+            echo "Completed $filename in ${duration} seconds"
+          done
+          
+          echo "All videos processed successfully!"
+        shell: bash
+
+      - name: Analyze results
+        run: |
+          echo "=== Processing Results ==="
+          ls -lh outputs/ || echo "No outputs generated"
+          
+          for f in outputs/*.mp4; do
+            if [ -f "$f" ]; then
+              echo "=== $(basename "$f") ==="
+              ffprobe -v quiet -show_format "$f" 2>/dev/null | grep -E "(duration|bit_rate|size)" || echo "Could not analyze file"
+            fi
+          done
+        shell: bash
+
+      - name: Upload processed videos
+        uses: actions/upload-artifact@v4
+        with:
+          name: cpp-optimized-videos-${{ github.run_number }}-${{ github.run_attempt }}
+          path: outputs/
+          if-no-files-found: warn
+          compression-level: 6
+
+      - name: Commit results
+        run: |
+          git config --global user.name "Optimized C++ Processor"
+          git config --global user.email "actions@github.com"
+          git add outputs/ || true
+          git commit -m "Add C++ optimized sketch videos [$(date '+%Y-%m-%d %H:%M:%S')]" || echo "No changes to commit"
+          git push || echo "Push failed - check logs"
+        shell: bash
             ~/.cache
             ./build/_deps
           key: ${{ runner.os }}-optimized-${{ hashFiles('CMakeLists.txt') }}
